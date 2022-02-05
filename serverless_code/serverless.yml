@@ -1,0 +1,452 @@
+service: new-de-project
+
+plugins:
+  - serverless-python-requirements
+  - serverless-dotenv-plugin
+  - serverless-iam-roles-per-function
+frameworkVersion: '2'
+
+provider:
+  name: aws
+  runtime: python3.8
+  region: ${env:region}
+  # profile: ${env:Profile_name}
+  stage: ${env:stage}
+  deploymentBucket:
+    name: ${env:deploymentBucket}
+    maxPreviousDeploymentArtifacts: 3
+
+
+
+
+functions:
+  crawler_trigger:
+    handler: crawler.run
+    name: ${env:crawler_trigger_name}
+    memorySize: 256
+    timeout: 300
+    iamRoleStatements:
+      - Effect: "Allow"        
+        Action:
+          - glue:*    
+        Resource: 
+          - "*"
+    events:
+      - s3:
+          bucket: ${env:Project_bucket}
+          event: s3:ObjectCreated:*
+          rules:
+            - prefix: ${env:crawler_trigger_folder}
+            - suffix: .csv
+          existing: true
+
+  stepfunction_trigger:
+    handler: stepfunction.run
+    name: ${env:stepfunction_trigger_name}
+    memorySize: 256
+    timeout: 300
+    iamRoleStatements:
+      - Effect: "Allow"        
+        Action:
+          - states:StartExecution  
+        Resource: 
+          - "*"
+    events:
+      - cloudwatchEvent:
+          event:
+            detail-type:
+              - Glue Crawler State Change
+            source:
+              - aws.glue
+            detail:
+              crawlerName:
+                - ${env:crawler_name}
+              state:
+                - Succeeded
+  
+  glueETL_trigger:
+    handler: glueETL.run
+    name: ${env:glueETL_trigger_name}
+    memorySize: 256
+    timeout: 300
+    iamRoleStatements:
+      - Effect: "Allow"        
+        Action:
+          - glue:*    
+        Resource: 
+          - "*"
+    events:
+      - cloudwatchEvent:
+          event:
+            source:
+            - aws.states
+            detail-type:
+            - Step Functions Execution Status Change
+            detail:
+              status:
+              - SUCCEEDED
+              stateMachineArn:
+              - !Ref MyStateMachine
+              - ''   
+              
+  fileTransfer_trigger:
+    handler: fileTransfer.run
+    name: ${env:fileTransfer_name}
+    memorySize: 256
+    timeout: 300
+    iamRoleStatements:
+      - Effect: "Allow"        
+        Action:
+          - s3:*    
+        Resource: 
+          - "*"
+    events:
+      - s3:
+          bucket: ${env:Project_bucket}
+          event: s3:ObjectCreated:*
+          rules:
+            - prefix: ${env:glue_job_output_folder}
+            - suffix: .csv
+          existing: true
+
+  remove_feature_files:
+    handler: remove_feature_files.run
+    name: ${env:remove_feature_files_name}
+    memorySize: 256
+    timeout: 300
+    iamRoleStatements:
+      - Effect: "Allow"        
+        Action:
+          - s3:*    
+        Resource: 
+          - "*"
+  
+
+  exe_query_order_products_prior:
+    handler: exe_query_order_products_prior.run
+    name: ${env:order_products_prior_name}
+    memorySize: 256
+    timeout: 300
+    iamRoleStatements:
+      - Effect: "Allow"        
+        Action:
+          - s3:* 
+          - athena:* 
+          - glue:*  
+        Resource: 
+          - "*"
+
+  exe_query_user_features_1:
+    handler: exe_query_user_features_1.run
+    name: ${env:user_features_1_name}
+    memorySize: 256
+    timeout: 300
+    iamRoleStatements:
+      - Effect: "Allow"        
+        Action:
+          - s3:* 
+          - athena:* 
+          - glue:*  
+        Resource: 
+          - "*"
+
+  exe_query_user_features_2:
+    handler: exe_query_user_features_2.run
+    name: ${env:user_features_2_name}
+    memorySize: 256
+    timeout: 300
+    iamRoleStatements:
+      - Effect: "Allow"        
+        Action:
+          - s3:* 
+          - athena:* 
+          - glue:*  
+        Resource: 
+          - "*"
+
+  exe_query_up_features:
+    handler: exe_query_up_features.run
+    name: ${env:up_features_name}
+    memorySize: 256
+    timeout: 300
+    iamRoleStatements:
+      - Effect: "Allow"        
+        Action:
+          - s3:* 
+          - athena:* 
+          - glue:*  
+        Resource: 
+          - "*"
+
+  exe_query_prd_features:
+    handler: exe_query_prd_features.run
+    name: ${env:prd_features_name}
+    memorySize: 256
+    timeout: 300
+    iamRoleStatements:
+      - Effect: "Allow"        
+        Action:
+          - s3:* 
+          - athena:* 
+          - glue:*  
+        Resource: 
+          - "*"
+
+  kafka_producer:
+    handler: kafka_producer.run
+    layers:
+      - { Ref: MyLayer }
+    name: ${env:kafka_producer_name}
+    memorySize: 256
+    timeout: 300
+    iamRoleStatements:
+      - Effect: "Allow"        
+        Action:
+          - s3:*    
+        Resource: 
+          - "*"
+    events:
+      - s3:
+          bucket: ${env:Project_bucket}
+          event: s3:ObjectCreated:*
+          rules:
+            - prefix: ${env:test_output_folder}
+            - suffix: .csv
+          existing: true
+
+  kafka_consumer:
+    handler: kafka_consumer.run
+    name: ${env:kafka_consumer_name}
+    memorySize: 256
+    timeout: 300
+    iamRoleStatements:
+      - Effect: "Allow"        
+        Action:
+          - dynamodb:*    
+        Resource: 
+          - "*"
+
+
+resources:
+  Description: recources for ETL process
+  Resources:
+    StepfunctionRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - states.amazonaws.com
+              Action: sts:AssumeRole
+        Path: "/"
+        Policies:
+          - PolicyName: StatesExecutionPolicy
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - lambda:*
+                    - xray:*
+                  Resource: "*"
+    MyStateMachine:
+      Type: AWS::StepFunctions::StateMachine
+      Properties:
+        StateMachineName: ${env:stepfunction_name}
+        DefinitionString: !Sub |-
+          {
+            "Comment": "Step function to run imba process",
+            "StartAt": "remove_feature_files",
+            "States": {
+              "remove_feature_files": {
+                "Type": "Task",
+                "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${env:remove_feature_files_name}:$LATEST",
+                "ResultPath": "$.remove_feature_files",
+                "Next": "exe_query_order_products_prior",
+                "TimeoutSeconds": 60
+              },
+              "exe_query_order_products_prior": {
+                "Type": "Task",
+                "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${env:order_products_prior_name}:$LATEST",
+                "ResultPath": "$.exe_query_order_products_prior",
+                "Next": "exe_query_user_features_1",
+                "TimeoutSeconds": 60
+              },
+              "exe_query_user_features_1": {
+                "Type": "Task",
+                "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${env:user_features_1_name}:$LATEST",
+                "ResultPath": "$.exe_query_user_features_1",
+                "Next": "exe_query_user_features_2",
+                "TimeoutSeconds": 60
+              },
+              "exe_query_user_features_2": {
+                "Type": "Task",
+                "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${env:user_features_2_name}:$LATEST",
+                "ResultPath": "$.exe_query_user_features_2",
+                "Next": "exe_query_up_features",
+                "TimeoutSeconds": 60
+              },
+              "exe_query_up_features": {
+                "Type": "Task",
+                "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${env:up_features_name}:$LATEST",
+                "ResultPath": "$.exe_query_up_features",
+                "Next": "exe_query_prd_features",
+                "TimeoutSeconds": 60
+              },
+              "exe_query_prd_features": {
+                "Type": "Task",
+                "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${env:prd_features_name}:$LATEST",
+                "ResultPath": "$.exe_query_up_features",
+                "TimeoutSeconds": 60,
+                "End": true
+              }
+            }
+          }
+        RoleArn: !GetAtt StepfunctionRole.Arn     
+
+    crawlerRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - glue.amazonaws.com
+              Action: sts:AssumeRole
+        Path: "/"
+        Policies:
+          - PolicyName: crawlerExecutionPolicy
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - s3:*
+                    - glue:*
+                    - logs:CreateLogGroup
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                    - cloudwatch:PutMetricData
+                  Resource: "*"
+    MyDatabase:
+      Type: AWS::Glue::Database
+      Properties:
+        CatalogId: !Ref AWS::AccountId
+        DatabaseInput:
+          Name: !Sub "${env:database_name}"  
+          Description: "Database for ETL process"
+    MyCrawler:
+      Type: AWS::Glue::Crawler
+      Properties:
+        Name: !Sub "${env:crawler_name}"
+        Role: !GetAtt crawlerRole.Arn
+        DatabaseName: !Ref MyDatabase
+        Targets:
+          S3Targets:
+            - Path: !Sub "s3://${env:Project_bucket}/data"
+        SchemaChangePolicy:
+          UpdateBehavior: "UPDATE_IN_DATABASE"
+          DeleteBehavior: "DELETE_FROM_DATABASE"               
+
+    glueJobRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - glue.amazonaws.com
+              Action: sts:AssumeRole
+        Path: "/"
+        Policies:
+          - PolicyName: glueJobExecutionPolicy
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - s3:*
+                    - glue:*
+                    - logs:CreateLogGroup
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                    - cloudwatch:PutMetricData
+                  Resource: "*"
+    MyGlueJob:
+      Type: AWS::Glue::Job
+      Properties:
+        Description: "Glue job for ETL process"
+        Name: !Sub "${env:glue_job_name}"
+        Role: !Ref glueJobRole
+        Command:
+          Name: glueetl
+          ScriptLocation: !Sub "s3://${env:Project_bucket}/${env:glue_scripts_key}" 
+        GlueVersion: "2.0"
+        NumberOfWorkers: 5
+        WorkerType: Standard 
+
+    MyDynamoDBTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: !Sub "${env:dynamoDB_name}"
+        AttributeDefinitions:
+          - AttributeName: user_id
+            AttributeType: S
+          - AttributeName: product_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: user_id
+            KeyType: HASH
+          - AttributeName: product_id
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+
+      
+    MyLayer:
+      Type: AWS::Lambda::LayerVersion
+      Properties:
+        CompatibleRuntimes:
+          - python3.8
+        CompatibleArchitectures: 
+          - x86_64
+        Content:
+          S3Bucket: !Sub "${env:Project_bucket}"
+          S3Key: !Sub "${env:confluent_key}"
+        LayerName: !Sub "${env:kafka_layer_name}"
+
+    MySagemakerInstance:
+      Type: "AWS::SageMaker::NotebookInstance"
+      Properties:
+        InstanceType: "ml.t3.xlarge"
+        RoleArn: !GetAtt SagemakerRole.Arn
+        NotebookInstanceName: !Sub "${env:sagemaker_name}"
+    SagemakerRole: 
+      Type: "AWS::IAM::Role"
+      Properties: 
+        AssumeRolePolicyDocument: 
+          Version: "2012-10-17"
+          Statement: 
+            - 
+              Effect: "Allow"
+              Principal: 
+                Service: 
+                  - "sagemaker.amazonaws.com"
+              Action: 
+                - "sts:AssumeRole"
+        Path: "/"
+        ManagedPolicyArns:
+          - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonSageMakerFullAccess"
+          - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess"
+          - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonSSMFullAccess"
+
+
+  
+
+

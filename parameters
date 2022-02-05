@@ -1,0 +1,4 @@
+S3(data lake) --> Lambda 1 --> Crawler & data catalog
+Data Catalog --> Lambda 2 --> Glue ETL & S3 output folder
+internet --> API gateway(request) --> Lambda 3(function) --> sagemaker endpoint --> API gateway(response) --> client
+training&testing data(S3) --> lambda 4 --> run sagemaker job
