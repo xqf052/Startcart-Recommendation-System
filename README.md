@@ -1,53 +1,29 @@
-# New-De-Project
-### Python
+# Startcart Recommendation System
+### Project Introduction
 
 ```bash
-# 1. Install or update python to version 3.8
-# 2. cd to the directory where requirements.txt is located
-# 3. Optional: activate your virtualenv
-# 4. Run the following command to install required python packages
-pip3 install -r requirements.txt
+The project is to create an ETL process to sync the data from a Mysql transactional database into
+a Redshift data warehouse. The data comes from an Brazilian E-commerce company called Olist.
+The Aws components involved in this project are RDS, Redshift, Glue, Lambda, Data Pipeline, Quicksight,
+etc. I use Star schema for dimensional modeling of the data warehouse. I use Dbeaver to connect both
+the RDS instance and the Redshift cluster.
+
+The first step of the mechanism is to use Data Pipeline to establish connection with RDS Mysql database 
+and pull the transactional data as csv file formats, which will be saved in S3. Then I implement both 
+initial ETL and incremental ETL to load the data from S3 into Redshift data warehouse. For the historical
+data, I write SQL queries to load them directly into the data warehouse. For the incremental data, I use 
+lambda function, event trigger and glue job with python shell script to automatically perfrom ETL and
+load data on a periodic basis.
 ```
 
-### Serverless
+### ER Diagram
 
-```bash
-# Install Serverless taking wsl on windows as example
-# 1. Updates ubuntu
-sudo apt-get update && sudo apt-get upgrade -y
-# 2. Install node
-sudo apt-get install curl -y
-curl –sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
-sudo apt-get nodejs -y
-# 3. Test node
-node -v
-# 4. Test npm
-npm -v
-# 5.1 Install the Serverless cli, if you do not have Serverless pre-installed
-sudo npm install -g serverless
-# 5.2 Update Serverless from a previous version of Serverless, if you already have installed Serverless
-sudo npm update -g serverless
-# 6 Check serverless framework version
-serverless -v
-```
-
-### Serverless Plugin
-```bash
-# Install serverless python requirements
-# https://github.com/UnitedIncome/serverless-python-requirements
-cd ${PROJECT_FOLDER}
-sls plugin install -n serverless-python-requirements
-# Install serverless dotenv plugin
-npm i -D serverless-dotenv-plugin 
-# Install Serverless IAM Roles Per Function Plugin
-npm install --save-dev serverless-iam-roles-per-function
-```
-
-Presentation slides:
-
-https://www.canva.com/design/DAEyUfUVFIU/share/preview?token=ZxtD5B8K0Eqv7hmikCYBPA&role=EDITOR&utm_content=DAEyUfUVFIU&utm_campaign=designshare&utm_medium=link&utm_source=sharebutton
+![ER-diagram](https://user-images.githubusercontent.com/31687491/161413393-4a775ced-fc7a-4bc5-96cc-8b5fd52e292d.png)
 
 
-Jenkins: 
-http://d1fcf0fdff6a.ngrok.io/
+### Project Architecture
+
+![project-architecture](https://user-images.githubusercontent.com/31687491/161413563-e758bd78-843a-45a3-96bf-678533a58b7e.png)
+
+
 
